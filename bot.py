@@ -44,7 +44,6 @@ def send_welcome(message):
         f"{render_url}/get_json/{user_id}"
     )
     
-    # Відправляємо без parse_mode, щоб уникнути помилок Markdown
     bot.reply_to(message, text)
 
 @bot.message_handler(func=lambda message: True)
@@ -75,18 +74,21 @@ def get_json(user_id):
 
 # --- RUNNER ---
 
-def run_bot():
+def run_flask():
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
+
+if __name__ == "__main__":
+    # Запускаємо Flask у фоновому потоці
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+    
+    # Очищуємо вебхуки та запускаємо поллінг бота в головному потоці
     print("Запуск Telegram бота...")
     try:
         bot.remove_webhook()
     except Exception as e:
         print(f"Видалення вебхуку: {e}")
         
-    bot.infinity_polling(none_stop=True)
-
-if __name__ == "__main__":
-    bot_thread = threading.Thread(target=run_bot, daemon=True)
-    bot_thread.start()
-    
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    # Запуск без застарілого параметра none_stop
+    bot.infinity_polling()
