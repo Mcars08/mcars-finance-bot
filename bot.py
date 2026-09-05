@@ -4,7 +4,6 @@ import threading
 from flask import Flask, jsonify
 import telebot
 
-# 1. Отримання токена зі змінних оточення (Environment Variables)
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
 
 if not BOT_TOKEN:
@@ -15,10 +14,7 @@ app = Flask(__name__)
 
 DATA_FILE = "data.json"
 
-# --- ФУНКЦІЇ ДЛЯ РОБОТИ З ФАЙЛОМ JSON ---
-
 def load_data():
-    """Завантажує дані з JSON файлу."""
     if os.path.exists(DATA_FILE):
         try:
             with open(DATA_FILE, "r", encoding="utf-8") as f:
@@ -29,7 +25,6 @@ def load_data():
     return {}
 
 def save_data(data):
-    """Зберігає дані у JSON файл."""
     try:
         with open(DATA_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
@@ -57,11 +52,9 @@ def handle_all_messages(message):
     text = message.text
     
     data = load_data()
-    
     if user_id not in data:
         data[user_id] = []
-    
-    # Додаємо нове повідомлення
+        
     data[user_id].append({"message": text})
     save_data(data)
     
@@ -82,8 +75,13 @@ def get_json(user_id):
 # --- RUNNER ---
 
 def run_bot():
-    print("Запуск Telegram бота...")
-    bot.infinity_polling()
+    print("--- Очищення старого з'єднання та запуск Telegram бота ---")
+    try:
+        bot.remove_webhook()
+    except Exception as e:
+        print(f"Помилка при видаленні вебхуку: {e}")
+    
+    bot.infinity_polling(none_stop=True)
 
 if __name__ == "__main__":
     # Запускаємо бота в окремому потоці
