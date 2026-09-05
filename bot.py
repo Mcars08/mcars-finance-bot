@@ -139,7 +139,8 @@ def callback_inline(call):
         bot.edit_message_text(
             chat_id=call.message.chat.id,
             message_id=call.message.message_id,
-            text=f'📂 {group} -> {sub_name}\n\n✍️ Введіть суму та опис через пробіл (наприклад: 1500 Купівля деталей або просто 500):'
+            text=f'📂 {group} -> {sub_name}\n\n✍️ Введіть суму (наприклад: <code>1500 Купівля</code> для плюса або <code>-500 Ремонт</code> для мінуса):',
+            parse_mode='HTML'
         )
 
     elif call.data == 'btn_profit':
@@ -155,13 +156,14 @@ def callback_inline(call):
 def handle_text(message):
     user_id = str(message.chat.id)
 
-    if user_id in user_state and user_state[user_id].get('step') == 'waiting_amount':
+    if user_id in user_state and user_state[user_id].get('step'] == 'waiting_amount':
         data = user_state[user_id]
         group = data['group']
         subgroup = data['subgroup']
 
         parts = message.text.split(' ', 1)
         try:
+            # float() спокійно сприймає мінус, наприклад "-500"
             amount = float(parts[0])
             description = parts[1] if len(parts) > 1 else 'Загальне'
 
@@ -188,7 +190,8 @@ def handle_text(message):
         except ValueError:
             bot.send_message(
                 message.chat.id,
-                '⚠️ Будь ласка, введіть суму та опис коректно (наприклад: 1500 Купівля деталей або просто 500)'
+                '⚠️ Будь ласка, введіть суму коректно (наприклад: <code>1500 Дохід</code> або <code>-500 Витрата</code>)',
+                parse_mode='HTML'
             )
     else:
         bot.send_message(
