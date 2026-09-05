@@ -1,7 +1,7 @@
 import os
 import json
 import threading
-from flask import Flask, jsonify
+from flask import Flask, jsonify, send_file
 import telebot
 
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
@@ -31,6 +31,13 @@ def save_data(data):
     except Exception as e:
         print(f"Помилка збереження файлу: {e}")
 
+def create_user_json_file(user_id, records):
+    """Створює тимчасовий файлик USER_ID.json для надсилання в Telegram."""
+    filename = f"{user_id}.json"
+    with open(filename, "w", encoding="utf-8") as f:
+        json.dump(records, f, ensure_ascii=False, indent=4)
+    return filename
+
 # --- TELEGRAM BOT HANDLERS ---
 
 @bot.message_handler(commands=['start'])
@@ -38,13 +45,23 @@ def send_welcome(message):
     user_id = str(message.from_user.id)
     render_url = os.environ.get("RENDER_EXTERNAL_URL", "https://mcars-finance-bot-t3na.onrender.com")
     
+    data = load_data()
+    user_records = data.get(user_id, [])
+    
     text = (
         f"Привіт! Твій ID: {user_id}\n\n"
         f"Твоє посилання для додатка на ПК:\n"
         f"{render_url}/get_json/{user_id}"
     )
-    
     bot.reply_to(message, text)
+    
+    # Створюємо та відправляємо файл .json у чат
+    filename = create_user_json_file(user_id, user_records)
+    with open(filename, "rb") as doc:
+        bot.send_document(message.chat.id, doc)
+    
+    if os.path.exists(filename):
+        os.remove(filename)
 
 @bot.message_handler(func=lambda message: True)
 def handle_all_messages(message):
@@ -55,10 +72,21 @@ def handle_all_messages(message):
     if user_id not in data:
         data[user_id] = []
         
+    # Додаємо запис
     data[user_id].append({"message": text})
     save_data(data)
     
-    bot.reply_to(message, f"Записано в базу: {text}")
+    # Формуємо та надсилаємо оновлений файл .json
+    filename = create_user_json_file(user_id, data[user_id])
+    with open(filename, "rb") as doc:
+        bot.send_document(
+            message.chat.id, 
+            doc, 
+            caption=f"Записано в базу: {text}"
+        )
+        
+    if os.path.exists(filename):
+        os.remove(filename)
 
 # --- FLASK API ENDPOINTS ---
 
@@ -79,16 +107,13 @@ def run_flask():
     app.run(host="0.0.0.0", port=port)
 
 if __name__ == "__main__":
-    # Запускаємо Flask у фоновому потоці
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
     
-    # Очищуємо вебхуки та запускаємо поллінг бота в головному потоці
     print("Запуск Telegram бота...")
     try:
         bot.remove_webhook()
     except Exception as e:
         print(f"Видалення вебхуку: {e}")
         
-    # Запуск без застарілого параметра none_stop
     bot.infinity_polling()
