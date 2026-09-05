@@ -3,7 +3,7 @@ import threading
 from flask import Flask, jsonify
 import telebot
 
-# 1. Отримання токена зі змінних оточення Render (Environment Variables)
+# 1. Зчитування токена з Environment Variables (Render)
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
 
 if not BOT_TOKEN:
@@ -12,7 +12,7 @@ if not BOT_TOKEN:
 bot = telebot.TeleBot(BOT_TOKEN)
 app = Flask(__name__)
 
-# Сховище даних у пам'яті
+# Тимчасове сховище даних у пам'яті
 user_data = {}
 
 # --- TELEGRAM BOT HANDLERS ---
@@ -54,10 +54,11 @@ def get_json(user_id):
 
 def run_bot():
     print("Запуск Telegram бота...")
-    bot.infinity_polling(skip_pending=True)
+    # Використовуємо стандартний infinity_polling() без параметрів, щоб уникнути конфліктів версій telebot
+    bot.infinity_polling()
 
 if __name__ == "__main__":
-    # Запускаємо бота в окремому потоці
+    # Запуск бота в окремому потоці
     bot_thread = threading.Thread(target=run_bot, daemon=True)
     bot_thread.start()
     
