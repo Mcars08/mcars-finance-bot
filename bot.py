@@ -5,7 +5,7 @@ import time
 import telebot
 from telebot import types
 
-TOKEN = "8996181218:AAG1HEmDv6JKM6Ibp81k1798B5NmzU15DNE"
+TOKEN = "8996181218:AAELaCNDCti2hWlr0sFeSuZbZmLeLHCbfP4"
 bot = telebot.TeleBot(TOKEN)
 
 user_states = {}
