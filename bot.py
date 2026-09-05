@@ -38,13 +38,14 @@ def send_welcome(message):
     user_id = str(message.from_user.id)
     render_url = os.environ.get("RENDER_EXTERNAL_URL", "https://mcars-finance-bot-t3na.onrender.com")
     
-    bot.reply_to(
-        message, 
-        f"Привіт! Твій ID: `{user_id}`\n\n"
+    text = (
+        f"Привіт! Твій ID: {user_id}\n\n"
         f"Твоє посилання для додатка на ПК:\n"
-        f"{render_url}/get_json/{user_id}",
-        parse_mode="Markdown"
+        f"{render_url}/get_json/{user_id}"
     )
+    
+    # Відправляємо без parse_mode, щоб уникнути помилок Markdown
+    bot.reply_to(message, text)
 
 @bot.message_handler(func=lambda message: True)
 def handle_all_messages(message):
@@ -75,19 +76,17 @@ def get_json(user_id):
 # --- RUNNER ---
 
 def run_bot():
-    print("--- Очищення старого з'єднання та запуск Telegram бота ---")
+    print("Запуск Telegram бота...")
     try:
         bot.remove_webhook()
     except Exception as e:
-        print(f"Помилка при видаленні вебхуку: {e}")
-    
+        print(f"Видалення вебхуку: {e}")
+        
     bot.infinity_polling(none_stop=True)
 
 if __name__ == "__main__":
-    # Запускаємо бота в окремому потоці
     bot_thread = threading.Thread(target=run_bot, daemon=True)
     bot_thread.start()
     
-    # Запуск Flask сервера
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
