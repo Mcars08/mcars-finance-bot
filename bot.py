@@ -53,7 +53,6 @@ def save_json(filename, data):
 # 3. Головне меню з інлайн-кнопками при команді /start
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-  # Очищаємо стан користувача при старті
   if str(message.chat.id) in user_state:
     del user_state[str(message.chat.id)]
 
@@ -76,7 +75,7 @@ def send_welcome(message):
   )
 
 
-# 4. Обробка натискань на інлайн-кнопки (вибір категорій та підгруп)
+# 4. Обробка всіх натискань на інлайн-кнопки
 @bot.callback_query_handler(func=lambda call: True)
 def callback_inline(call):
   user_id = str(call.message.chat.id)
@@ -95,7 +94,6 @@ def callback_inline(call):
     )
 
   elif call.data == 'btn_add':
-    # Крок 1: Вибір великої групи
     markup = types.InlineKeyboardMarkup(row_width=2)
     markup.add(
         types.InlineKeyboardButton('🚗 Машина', callback_data='group_Машина'),
@@ -117,7 +115,6 @@ def callback_inline(call):
     group_name = call.data.split('_')[1]
     user_state[user_id] = {'group': group_name}
 
-    # Крок 2: Вибір маленьких підгруп залежно від головної групи
     markup = types.InlineKeyboardMarkup(row_width=2)
     if group_name == 'Машина':
       markup.add(
@@ -182,7 +179,7 @@ def callback_inline(call):
     )
 
 
-# 5. Обробка текстових повідомлень (тільки коли бот чекає введення суми після вибору підгрупи)
+# 5. Обробка введення суми транзакції
 @bot.message_handler(func=lambda message: True)
 def handle_text(message):
   user_id = str(message.chat.id)
@@ -217,7 +214,6 @@ def handle_text(message):
           '✅ Успішно збережено!\n\n📂 '
           f'{group} -> {subgroup} ({description})\n📝 Сума: {sign_str} грн',
       )
-      # Очищаємо стан після збереження
       del user_state[user_id]
     except ValueError:
       bot.send_message(
@@ -228,7 +224,7 @@ def handle_text(message):
   else:
     bot.send_message(
         message.chat.id,
-        '⚠️ Будь ласка, натисніть /start або скористайтесь інлайн-кнопками меню.',
+        '⚠️ Натисніть /start, щоб відкрити меню з кнопками.',
     )
 
 
