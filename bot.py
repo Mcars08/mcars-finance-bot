@@ -3,7 +3,7 @@ import threading
 from flask import Flask, jsonify
 import telebot
 
-# 1. Отримання токена зі змінних оточення (Environment Variables)
+# 1. Отримання токена зі змінних оточення Render (Environment Variables)
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
 
 if not BOT_TOKEN:
@@ -12,7 +12,7 @@ if not BOT_TOKEN:
 bot = telebot.TeleBot(BOT_TOKEN)
 app = Flask(__name__)
 
-# Тимчасове сховище даних (або підключи сюди свою БД / файл)
+# Сховище даних у пам'яті
 user_data = {}
 
 # --- TELEGRAM BOT HANDLERS ---
@@ -33,7 +33,6 @@ def handle_all_messages(message):
     user_id = message.from_user.id
     text = message.text
     
-    # Зберігаємо повідомлення користувача
     if user_id not in user_data:
         user_data[user_id] = []
     user_data[user_id].append({"message": text})
@@ -48,7 +47,6 @@ def home():
 
 @app.route('/get_json/<int:user_id>', methods=['GET'])
 def get_json(user_id):
-    # Повертає JSON-дані для конкретного user_id
     data = user_data.get(user_id, [])
     return jsonify(data)
 
@@ -56,13 +54,13 @@ def get_json(user_id):
 
 def run_bot():
     print("Запуск Telegram бота...")
-    bot.infinity_polling(skip_pending_webhooks=True)
+    bot.infinity_polling(skip_pending=True)
 
 if __name__ == "__main__":
-    # Запускаємо бота в окремому потоці, щоб Flask не блокувався
+    # Запускаємо бота в окремому потоці
     bot_thread = threading.Thread(target=run_bot, daemon=True)
     bot_thread.start()
     
-    # Запуск Flask вебсервера на порту від Render (або 5000 за замовчуванням)
+    # Запуск Flask на порту від Render
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
