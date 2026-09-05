@@ -1,252 +1,264 @@
-import os
 import json
+import os
+import random
 import threading
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify
 import telebot
 from telebot import types
 
-# 1. Налаштування токена та ключа доступу
-BOT_TOKEN = os.environ.get('BOT_TOKEN')
-API_KEY = os.environ.get('API_KEY', '448314') # Ключ для програми на ПК
-
-if not BOT_TOKEN:
-    raise ValueError("Помилка: BOT_TOKEN не знайдено у змінних оточення Render!")
-
-bot = telebot.TeleBot(BOT_TOKEN)
-app = Flask(__name__)
-
-DATA_FILE = "data.json"
-
-# Тимчасовий стан для операцій користувача
-user_states = {}
-
-def load_data():
-    if os.path.exists(DATA_FILE):
-        try:
-            with open(DATA_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception as e:
-            print(f"Помилка читання файлу: {e}")
-            return {}
-    return {}
-
-def save_data(data):
-    try:
-        with open(DATA_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=4)
-    except Exception as e:
-        print(f"Помилка збереження файлу: {e}")
-
-# --- ІНЛАЙН-МЕНЮ ---
-
-def get_main_menu():
-    markup = types.InlineKeyboardMarkup(row_width=1)
-    markup.add(
-        types.InlineKeyboardButton("🔑 Отримати код авторизації для ПК", callback_data="get_code"),
-        types.InlineKeyboardButton("➕ Додати транзакцію", callback_data="add_transaction"),
-        types.InlineKeyboardButton("📊 Переглянути прибуток", callback_data="view_profit")
-    )
-    return markup
-
-def get_main_categories_menu():
-    markup = types.InlineKeyboardMarkup(row_width=1)
-    markup.add(
-        types.InlineKeyboardButton("🏢 Бізнес", callback_data="main_cat:Бізнес"),
-        types.InlineKeyboardButton("🚗 Машини", callback_data="main_cat:Машини"),
-        types.InlineKeyboardButton("🏠 Головне меню", callback_data="back_to_main")
-    )
-    return markup
-
-def get_subcategories_menu(main_category):
-    markup = types.InlineKeyboardMarkup(row_width=1)
-    if main_category == "Бізнес":
-        markup.add(
-            types.InlineKeyboardButton("🛒 Магазин", callback_data="sub_cat:Магазин"),
-            types.InlineKeyboardButton("⛽ АЗС", callback_data="sub_cat:АЗС"),
-            types.InlineKeyboardButton("🏢 Нафтовишка", callback_data="sub_cat:Нафтовишка"),
-            types.InlineKeyboardButton("📋 Інше", callback_data="sub_cat:Інше бізнес")
-        )
-    elif main_category == "Машини":
-        markup.add(
-            types.InlineKeyboardButton("🏎️ Спортивні", callback_data="sub_cat:Спортивні"),
-            types.InlineKeyboardButton("🚚 Вантажні", callback_data="sub_cat:Вантажні"),
-            types.InlineKeyboardButton("🚙 Позашляховики", callback_data="sub_cat:Позашляховики"),
-            types.InlineKeyboardButton("📋 Загальне", callback_data="sub_cat:Загальне машина")
-        )
-    markup.add(
-        types.InlineKeyboardButton("⬅️ Назад", callback_data="add_transaction"),
-        types.InlineKeyboardButton("🏠 Головне меню", callback_data="back_to_main")
-    )
-    return markup
-
-def get_transaction_type_menu():
-    markup = types.InlineKeyboardMarkup(row_width=2)
-    markup.add(
-        types.InlineKeyboardButton("🟢 Дохід (+)", callback_data="type:income"),
-        types.InlineKeyboardButton("🔴 Витрата (-)", callback_data="type:expense")
-    )
-    markup.add(
-        types.InlineKeyboardButton("⬅️ Назад", callback_data="back_to_categories"),
-        types.InlineKeyboardButton("🏠 Головне меню", callback_data="back_to_main")
-    )
-    return markup
-
-def get_back_menu():
-    markup = types.InlineKeyboardMarkup(row_width=1)
-    markup.add(
-        types.InlineKeyboardButton("⬅️ Назад", callback_data="back_to_type"),
-        types.InlineKeyboardButton("🏠 Головне меню", callback_data="back_to_main")
-    )
-    return markup
-
-# --- TELEGRAM BOT HANDLERS ---
-
-@bot.message_handler(commands=['start'])
-def send_welcome(message):
-    chat_id = message.chat.id
-    text = "🚗 *MCARS & FINANCE CONTROL BOT*\n\nОберіть дію:"
-    bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=get_main_menu())
-
-@bot.callback_query_handler(func=lambda call: True)
-def handle_callback(call):
-    user_id = str(call.from_user.id)
-    chat_id = call.message.chat.id
-    
-    if call.data == "get_code":
-        code = API_KEY
-        text = f"🔑 Ваш код для входу в програму на ПК: `{code}`\n\nВведіть цей код у вікні програми при першому запуску."
-        bot.send_message(chat_id, text, parse_mode="Markdown")
-        bot.answer_callback_query(call.id)
-
-    elif call.data == "add_transaction":
-        text = "📁 *Оберіть розділ:*"
-        bot.edit_message_text(text, chat_id=chat_id, message_id=call.message.message_id, parse_mode="Markdown", reply_markup=get_main_categories_menu())
-
-    elif call.data.startswith("main_cat:"):
-        main_cat = call.data.split("main_cat:")[1]
-        user_states[user_id] = {"main_cat": main_cat}
-        text = f"📂 Розділ: *{main_cat}*\nОберіть категорію:"
-        bot.edit_message_text(text, chat_id=chat_id, message_id=call.message.message_id, parse_mode="Markdown", reply_markup=get_subcategories_menu(main_cat))
-
-    elif call.data.startswith("sub_cat:"):
-        sub_cat = call.data.split("sub_cat:")[1]
-        if user_id in user_states:
-            user_states[user_id]["sub_cat"] = sub_cat
-        text = f"⚙️ Обрано: *{sub_cat}*\nОберіть тип операції:"
-        bot.edit_message_text(text, chat_id=chat_id, message_id=call.message.message_id, parse_mode="Markdown", reply_markup=get_transaction_type_menu())
-
-    elif call.data.startswith("type:"):
-        t_type = call.data.split("type:")[1]
-        if user_id in user_states:
-            user_states[user_id]["action"] = "wait_for_transaction"
-            user_states[user_id]["trans_type"] = t_type
-        
-        type_name = "Дохід (+)" if t_type == "income" else "Витрата (-)"
-        state = user_states.get(user_id, {})
-        text = f"📝 *{state.get('main_cat')} -> {state.get('sub_cat')}* ({type_name})\n\nВведіть суму та опис через пробіл.\nНаприклад: `1500 Купівля деталей` або просто `500`:"
-        
-        bot.edit_message_text(text, chat_id=chat_id, message_id=call.message.message_id, parse_mode="Markdown", reply_markup=get_back_menu())
-
-    elif call.data == "back_to_categories":
-        state = user_states.get(user_id, {})
-        main_cat = state.get("main_cat", "Машини")
-        text = f"📂 Розділ: *{main_cat}*\nОберіть категорію:"
-        bot.edit_message_text(text, chat_id=chat_id, message_id=call.message.message_id, parse_mode="Markdown", reply_markup=get_subcategories_menu(main_cat))
-
-    elif call.data == "back_to_type":
-        text = "⚙️ Оберіть тип операції:"
-        bot.edit_message_text(text, chat_id=chat_id, message_id=call.message.message_id, parse_mode="Markdown", reply_markup=get_transaction_type_menu())
-
-    elif call.data == "view_profit":
-        data = load_data()
-        user_records = data.get(user_id, [])
-        text = f"📊 Ваші збережені дані:\n`{json.dumps(user_records, ensure_ascii=False, indent=2)}`"
-        bot.send_message(chat_id, text, parse_mode="Markdown")
-        bot.answer_callback_query(call.id)
-
-    elif call.data == "back_to_main":
-        user_states.pop(user_id, None)
-        text = "🚗 *MCARS & FINANCE CONTROL BOT*\n\nОберіть дію:"
-        bot.edit_message_text(text, chat_id=chat_id, message_id=call.message.message_id, parse_mode="Markdown", reply_markup=get_main_menu())
-
-@bot.message_handler(func=lambda message: True)
-def handle_text_message(message):
-    user_id = str(message.from_user.id)
-    text = message.text
-    chat_id = message.chat.id
-    
-    state = user_states.get(user_id, {})
-    
-    if state.get("action") == "wait_for_transaction":
-        t_type = state.get("trans_type")
-        main_cat = state.get("main_cat")
-        sub_cat = state.get("sub_cat")
-        parts = text.split(maxsplit=1)
-        
-        try:
-            amount_float = float(parts[0])
-            if t_type == "expense":
-                amount_float = -abs(amount_float)
-            else:
-                amount_float = abs(amount_float)
-                
-            description = parts[1] if len(parts) > 1 else "Без опису"
-            
-            data = load_data()
-            if user_id not in data:
-                data[user_id] = []
-                
-            record = {
-                "main_category": main_cat,
-                "subcategory": sub_cat,
-                "amount": amount_float,
-                "description": description
-            }
-            data[user_id].append(record)
-            save_data(data)
-            
-            sign_str = f"+{amount_float}" if amount_float > 0 else str(amount_float)
-            response_text = f"✅ Успішно збережено!\n\n📁 {main_cat} -> {sub_cat}\n📝 Додано з Telegram: {sign_str} грн ({description})"
-            
-            bot.send_message(chat_id, response_text, reply_markup=get_main_menu())
-            user_states.pop(user_id, None)
-            
-        except ValueError:
-            bot.reply_to(message, "⚠️ Помилка! Першим словом має бути число (сума). Спробуйте ще раз або скористайтеся кнопками.")
-    else:
-        bot.send_message(chat_id, "Будь ласка, скористайтеся кнопками меню або почніть з команди /start", reply_markup=get_main_menu())
-
-# --- FLASK API ---
+# 1. Міні-сервер для Render (щоб тримати порт відкритим)
+app = Flask('')
 
 @app.route('/')
 def home():
-    return "Finance Bot & Web Service is Running Alive!"
+    return 'Bot is alive!'
 
-@app.route('/get_json/<user_id>', methods=['GET'])
-def get_json(user_id):
-    provided_key = request.headers.get("X-API-Key") or request.args.get("api_key")
-    
-    if provided_key != API_KEY:
-        return jsonify({"error": "Unauthorized: Invalid API Key"}), 401
+@app.route('/get_json/<user_id>')
+def get_user_json(user_id):
+    """Віддає дані у форматі JSON тільки для конкретного користувача за його ID"""
+    if os.path.exists('finance_data.json'):
+        with open('finance_data.json', 'r', encoding='utf-8') as f:
+            try:
+                data = json.load(f)
+                user_records = data.get(str(user_id), [])
+                return jsonify(user_records)
+            except:
+                return jsonify([])
+    return jsonify([])
+
+def run():
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
+
+def keep_alive():
+    t = threading.Thread(target=run, daemon=True)
+    t.start()
+
+keep_alive()
+
+# 2. Токен бота та ініціалізація
+TOKEN = os.environ.get('BOT_TOKEN', '8996181218:AAELaCNDCti2hWlr0sFeSuZbZmLeLHCbfP4')
+bot = telebot.TeleBot(TOKEN)
+
+# Словник для збереження стану користувача
+user_state = {}
+
+# Функції для роботи з JSON файлами
+def load_json(filename):
+    if os.path.exists(filename):
+        with open(filename, 'r', encoding='utf-8') as f:
+            try:
+                return json.load(f)
+            except:
+                return {}
+    return {}
+
+def save_json(filename, data):
+    with open(filename, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=4)
+
+# Головне меню
+def get_main_markup():
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    btn1 = types.InlineKeyboardButton('🔑 Отримати код авторизації для ПК', callback_data='btn_key')
+    btn2 = types.InlineKeyboardButton('➕ Додати транзакцію', callback_data='btn_add')
+    btn3 = types.InlineKeyboardButton('📊 Переглянути прибуток', callback_data='btn_profit')
+    markup.add(btn1, btn2, btn3)
+    return markup
+
+# 3. Головне меню при команді /start
+@bot.message_handler(commands=['start'])
+def send_welcome(message):
+    user_id = str(message.chat.id)
+    if user_id in user_state:
+        del user_state[user_id]
+
+    bot.send_message(
+        message.chat.id,
+        '🚗 MCARS & FINANCE CONTROL BOT\n\nОберіть дію:',
+        reply_markup=get_main_markup()
+    )
+
+# 4. Обробка всіх натискань на інлайн-кнопки
+@bot.callback_query_handler(func=lambda call: True)
+def callback_inline(call):
+    user_id = str(call.message.chat.id)
+
+    if call.data == 'main_menu':
+        if user_id in user_state:
+            del user_state[user_id]
+        bot.edit_message_text(
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            text='🚗 MCARS & FINANCE CONTROL BOT\n\nОберіть дію:',
+            reply_markup=get_main_markup()
+        )
+
+    elif call.data == 'btn_key':
+        code = random.randint(100000, 999999)
+        keys_data = load_json('user_keys.json')
+        keys_data[user_id] = code
+        save_json('user_keys.json', keys_data)
+
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton('🔙 Головне меню', callback_data='main_menu'))
+
+        bot.edit_message_text(
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            text=f'🔑 Ваш код для входу в програму на ПК: <code>{code}</code>\n\nВведіть цей код у вікні програми при першому запуску.',
+            parse_mode='HTML',
+            reply_markup=markup
+        )
+
+    elif call.data == 'btn_add':
+        markup = types.InlineKeyboardMarkup(row_width=2)
+        markup.add(
+            types.InlineKeyboardButton('🚗 Машина', callback_data='group_Машина'),
+            types.InlineKeyboardButton('🪙 Крипта', callback_data='group_Крипта'),
+            types.InlineKeyboardButton('💼 Бізнес', callback_data='group_Бізнес'),
+            types.InlineKeyboardButton('🛒 Покупки', callback_data='group_Покупки')
+        )
+        markup.add(
+            types.InlineKeyboardButton('✈️ Подорожі', callback_data='group_Подорожі')
+        )
+        markup.add(
+            types.InlineKeyboardButton('🔙 Головне меню', callback_data='main_menu')
+        )
+        bot.edit_message_text(
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            text='📂 Оберіть головну групу:',
+            reply_markup=markup
+        )
+
+    elif call.data.startswith('group_'):
+        group_name = call.data.split('_')[1]
+        user_state[user_id] = {'group': group_name}
+
+        markup = types.InlineKeyboardMarkup(row_width=2)
+        if group_name == 'Машина':
+            markup.add(
+                types.InlineKeyboardButton('🛠️ Ремонт', callback_data='sub_Ремонт'),
+                types.InlineKeyboardButton('⛽ Пальне', callback_data='sub_Пальне'),
+                types.InlineKeyboardButton('📋 Загальне', callback_data='sub_Загальне')
+            )
+        elif group_name == 'Крипта':
+            markup.add(
+                types.InlineKeyboardButton('📈 Покупка', callback_data='sub_Покупка'),
+                types.InlineKeyboardButton('📉 Продаж', callback_data='sub_Продаж')
+            )
+        elif group_name == 'Бізнес':
+            markup.add(
+                types.InlineKeyboardButton('📥 Доходи', callback_data='sub_Доходи'),
+                types.InlineKeyboardButton('📤 Витрати', callback_data='sub_Витрати')
+            )
+        else:
+            markup.add(
+                types.InlineKeyboardButton('📋 Загальне', callback_data='sub_Загальне')
+            )
         
-    data = load_data()
-    user_records = data.get(str(user_id), [])
-    return jsonify(user_records)
+        markup.add(types.InlineKeyboardButton('🔙 Назад до груп', callback_data='btn_add'))
+        markup.add(types.InlineKeyboardButton('🔙 Головне меню', callback_data='main_menu'))
 
-# --- RUNNER ---
+        bot.edit_message_text(
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            text=f'📁 Група: {group_name}\nОберіть підгрупу:',
+            reply_markup=markup
+        )
 
-def run_flask():
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    elif call.data.startswith('sub_'):
+        sub_name = call.data.split('_')[1]
+        if user_id in user_state:
+            user_state[user_id]['subgroup'] = sub_name
+            user_state[user_id]['step'] = 'waiting_amount'
 
-if __name__ == "__main__":
-    flask_thread = threading.Thread(target=run_flask, daemon=True)
-    flask_thread.start()
-    
+        group = user_state[user_id]['group']
+        
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton('🔙 Головне меню', callback_data='main_menu'))
+
+        bot.edit_message_text(
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            text=f'📂 {group} -> {sub_name}\n\n✍️ Введіть суму та опис (наприклад: <code>1500 Дохід</code> або <code>-500 Витрата</code>):',
+            parse_mode='HTML',
+            reply_markup=markup
+        )
+
+    elif call.data == 'btn_profit':
+        finance_data = load_json('finance_data.json')
+        user_records = finance_data.get(user_id, [])
+        
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton('🔙 Головне меню', callback_data='main_menu'))
+
+        bot.edit_message_text(
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            text=f'📊 Ваші збережені дані:\n<code>{json.dumps(user_records, ensure_ascii=False, indent=2)}</code>',
+            parse_mode='HTML',
+            reply_markup=markup
+        )
+
+# 5. Обробка введення суми транзакції
+@bot.message_handler(func=lambda message: True)
+def handle_text(message):
+    user_id = str(message.chat.id)
+
+    if user_id in user_state and user_state[user_id].get('step') == 'waiting_amount':
+        data = user_state[user_id]
+        group = data['group']
+        subgroup = data['subgroup']
+
+        parts = message.text.split(' ', 1)
+        try:
+            amount = float(parts[0])
+            description = parts[1] if len(parts) > 1 else 'Загальне'
+
+            finance_data = load_json('finance_data.json')
+            trans_list = finance_data.get(user_id, [])
+            if not isinstance(trans_list, list):
+                trans_list = []
+
+            trans_list.append({
+                'group': group,
+                'subgroup': subgroup,
+                'amount': amount,
+                'description': description
+            })
+            finance_data[user_id] = trans_list
+            save_json('finance_data.json', finance_data)
+
+            sign_str = f'+{amount:.2f}' if amount >= 0 else f'{amount:.2f}'
+            
+            markup = types.InlineKeyboardMarkup()
+            markup.add(types.InlineKeyboardButton('➕ Додати ще', callback_data='btn_add'))
+            markup.add(types.InlineKeyboardButton('🔙 Головне меню', callback_data='main_menu'))
+
+            bot.send_message(
+                message.chat.id,
+                f'✅ Успішно збережено!\n\n📂 {group} -> {subgroup} ({description})\n📝 Сума: {sign_str} грн',
+                reply_markup=markup
+            )
+            del user_state[user_id]
+        except ValueError:
+            bot.send_message(
+                message.chat.id,
+                '⚠️ Будь ласка, введіть суму коректно (наприклад: <code>1500 Дохід</code> або <code>-500 Витрата</code>)',
+                parse_mode='HTML'
+            )
+    else:
+        bot.send_message(
+            message.chat.id,
+            '⚠️ Натисніть /start, щоб відкрити меню з кнопками.'
+        )
+
+if __name__ == '__main__':
     print("Запуск Telegram бота...")
     try:
         bot.remove_webhook()
     except Exception as e:
         print(f"Видалення вебхуку: {e}")
-        
     bot.infinity_polling()
